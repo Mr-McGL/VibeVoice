@@ -1,6 +1,6 @@
 # vibevoice/modular/__init__.py
 from .modeling_vibevoice_streaming_inference import VibeVoiceStreamingForConditionalGenerationInference
-from .modeling_vibevoice_inference import VibeVoiceForConditionalGenerationInference
+from .modeling_vibevoice_inference_old import VibeVoiceForConditionalGenerationInference
 from .configuration_vibevoice_streaming import VibeVoiceStreamingConfig
 from .configuration_vibevoice import VibeVoiceConfig
 from .modeling_vibevoice_streaming import VibeVoiceStreamingModel, VibeVoiceStreamingPreTrainedModel

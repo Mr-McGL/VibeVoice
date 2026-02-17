@@ -1,12 +1,12 @@
 # vibevoice/__init__.py
 from vibevoice.modular import (
-    VibeVoiceStreamingForConditionalGenerationInference,
+    VibeVoiceStreamingForConditionalGenerationInference, ## Added for TTS
     VibeVoiceForConditionalGenerationInference,
     VibeVoiceStreamingConfig,
-    VibeVoiceConfig,
+    VibeVoiceConfig, ## Added for TTS
 )
 from vibevoice.processor import (
-    VibeVoiceProcessor,
+    VibeVoiceProcessor, ## Added for TTS
     VibeVoiceStreamingProcessor,
     VibeVoiceTokenizerProcessor,
 )
