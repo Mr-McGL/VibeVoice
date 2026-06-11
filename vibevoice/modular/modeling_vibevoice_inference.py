@@ -66,15 +66,23 @@ class VibeVoiceTokenConstraintProcessor(LogitsProcessor):
         return scores
 
 
+#######################################################
+#######################################################
+# Modificación para manejar la compatibilidad de cache con diferentes versiones de transformers
+from typing import Any
+import inspect
+########################################################
+
 
 class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, GenerationMixin):
-
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
 
 
-    #################################################
+    #######################################################
+    #######################################################
     # Modificación para manejar la compatibilidad de cache con diferentes versiones de transformers
+    # Helpers
     def _init_cache_for_generation(self, generation_config, model_kwargs, batch_size, max_cache_length, device):
         """
         Initialize cache for generation, handling different transformers versions.
@@ -96,6 +104,59 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                 return model_kwargs.get("past_key_values")
         except Exception:
             return None
+        
+    @staticmethod
+    def _iter_key_value_caches(past_key_values):
+        """Yield key/value tensors from old and new Transformers cache APIs."""
+        if past_key_values is None:
+            return
+
+        if hasattr(past_key_values, "key_cache") and hasattr(past_key_values, "value_cache"):
+            for key_cache, value_cache in zip(past_key_values.key_cache, past_key_values.value_cache):
+                yield key_cache, value_cache
+            return
+
+        if hasattr(past_key_values, "layers"):
+            for layer in past_key_values.layers:
+                key_cache = getattr(layer, "keys", None)
+                value_cache = getattr(layer, "values", None)
+
+                if key_cache is None:
+                    key_cache = getattr(layer, "key_cache", None)
+                if value_cache is None:
+                    value_cache = getattr(layer, "value_cache", None)
+
+                if isinstance(key_cache, torch.Tensor) and isinstance(value_cache, torch.Tensor):
+                    if key_cache.numel() > 0 and value_cache.numel() > 0:
+                        yield key_cache, value_cache
+            return
+
+        for layer_cache in past_key_values:
+            if len(layer_cache) >= 2:
+                yield layer_cache[0], layer_cache[1]
+    
+    #def _update_model_kwargs_for_generation(
+    #    self,
+    #    outputs,
+    #    model_kwargs,
+    #    is_encoder_decoder=False,
+    #    num_new_tokens=1,
+    #):
+    #    """Ensure cache compatibility after each generation step."""
+    #    model_kwargs = super()._update_model_kwargs_for_generation(
+    #        outputs,
+    #        model_kwargs,
+    #        is_encoder_decoder=is_encoder_decoder,
+    #        num_new_tokens=num_new_tokens,
+    #    )
+    #
+    #    if "past_key_values" in model_kwargs:
+    #        model_kwargs["past_key_values"] = _ensure_cache_has_layers(
+    #            model_kwargs["past_key_values"]
+    #        )
+    #
+    #    return model_kwargs
+    #######################################################
     #######################################################
 
 
@@ -592,8 +653,17 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                     negative_model_kwargs['attention_mask'][sample_idx, :] = 0
                     negative_model_kwargs['attention_mask'][sample_idx, -1] = 1
                 # update past key values
-                for layer_idx, (k_cache, v_cache) in enumerate(zip(negative_model_kwargs['past_key_values'].key_cache, 
-                                                                        negative_model_kwargs['past_key_values'].value_cache)):
+                #####################################################################
+                #####################################################################
+                # Parche para manejar la compatibilidad de cache con diferentes versiones de transformers
+                # for layer_idx, (k_cache, v_cache) in enumerate(zip(
+                #     negative_model_kwargs['past_key_values'].key_cache, 
+                #     negative_model_kwargs['past_key_values'].value_cache
+                # )):
+                for layer_idx, (k_cache, v_cache) in enumerate(
+                        self._iter_key_value_caches(negative_model_kwargs["past_key_values"])
+                ):
+
                     # Process each non-diffusion sample
                     for sample_idx in diffusion_start_indices.tolist():
                         # Shift cache for this sample
@@ -645,8 +715,16 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
                         negative_model_kwargs['attention_mask'][sample_idx, start_idx] = 0
 
                     # 2. Update past_key_values
-                    for layer_idx, (k_cache, v_cache) in enumerate(zip(negative_model_kwargs['past_key_values'].key_cache, 
-                                                                        negative_model_kwargs['past_key_values'].value_cache)):
+                    #####################################################################
+                    #####################################################################
+                    # Parche para manejar la compatibilidad de cache con diferentes versiones de transformers
+                    # for layer_idx, (k_cache, v_cache) in enumerate(zip(
+                    #     negative_model_kwargs['past_key_values'].key_cache, 
+                    #     negative_model_kwargs['past_key_values'].value_cache
+                    # )):
+                    for layer_idx, (k_cache, v_cache) in enumerate(
+                            self._iter_key_value_caches(negative_model_kwargs["past_key_values"])
+                    ):
                         # Process each non-diffusion sample
                         for sample_idx, start_idx in zip(non_diffusion_indices.tolist(), start_indices.tolist()):
                             if start_idx + 1 < k_cache.shape[2] - 1:
