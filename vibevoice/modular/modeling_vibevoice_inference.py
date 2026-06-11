@@ -64,10 +64,40 @@ class VibeVoiceTokenConstraintProcessor(LogitsProcessor):
         # Apply mask to scores
         scores = scores + mask
         return scores
-    
+
+
+
 class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, GenerationMixin):
+
     _tied_weights_keys = ["lm_head.weight"]
     _tp_plan = {"lm_head": "colwise_rep"}
+
+
+    #################################################
+    # Modificación para manejar la compatibilidad de cache con diferentes versiones de transformers
+    def _init_cache_for_generation(self, generation_config, model_kwargs, batch_size, max_cache_length, device):
+        """
+        Initialize cache for generation, handling different transformers versions.
+        For transformers >= 4.57, returns None to let the model create the cache dynamically.
+        """
+        try:
+            from transformers.cache_utils import DynamicCache
+            sig = inspect.signature(DynamicCache.__init__)
+            if 'config' in sig.parameters:
+                # transformers >= 4.57: let model handle cache creation
+                return None
+            else:
+                # Older versions: use parent method <--- self._prepare_cache_for_generation_compat(generation_config,model_kwargs,None,batch_size,max_cache_length,device)
+                prep_sig = inspect.signature(self._prepare_cache_for_generation)
+                if 'device' in prep_sig.parameters:
+                    self._prepare_cache_for_generation(generation_config, model_kwargs, None, batch_size, max_cache_length, device)
+                else:
+                    self._prepare_cache_for_generation(generation_config, model_kwargs, None, batch_size, max_cache_length)
+                return model_kwargs.get("past_key_values")
+        except Exception:
+            return None
+    #######################################################
+
 
     def __init__(self, config):
         super().__init__(config)
@@ -300,7 +330,14 @@ class VibeVoiceForConditionalGenerationInference(VibeVoicePreTrainedModel, Gener
         )
 
         max_cache_length = generation_config.max_length - 1
-        self._prepare_cache_for_generation(generation_config, model_kwargs, None, batch_size, max_cache_length, device)
+        ###############################################
+        # self._prepare_cache_for_generation(generation_config, model_kwargs, None, batch_size, max_cache_length, device)
+        #                                    generation_config, model_kwargs, None,batch_size, max_cache_length, device
+        ###############################################
+        # Así se implementa en: vibevoice/vibevoice/modular/modeling_vibevoice_inference.py
+        model_kwargs["past_key_values"] = self._init_cache_for_generation(generation_config, model_kwargs, batch_size, max_cache_length, device)
+        
+        
         model_kwargs['cache_position'] = torch.arange(input_ids_length, device=device, dtype=torch.long)
         for k, v in model_kwargs.items():
             if isinstance(v, torch.Tensor):

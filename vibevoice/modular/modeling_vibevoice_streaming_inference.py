@@ -324,7 +324,7 @@ class VibeVoiceStreamingForConditionalGenerationInference(VibeVoiceStreamingPreT
                 # transformers >= 4.57: let model handle cache creation
                 return None
             else:
-                # Older versions: use parent method
+                # Older versions: use parent method <--- self._prepare_cache_for_generation_compat(generation_config,model_kwargs,None,batch_size,max_cache_length,device)
                 prep_sig = inspect.signature(self._prepare_cache_for_generation)
                 if 'device' in prep_sig.parameters:
                     self._prepare_cache_for_generation(generation_config, model_kwargs, None, batch_size, max_cache_length, device)
